@@ -16,11 +16,10 @@ CORS_HEADERS = {
 
 AVATAR_COLORS = ["#a855f7", "#22d3ee", "#f472b6", "#34d399", "#f59e0b", "#ec4899", "#6366f1", "#14b8a6"]
 
-SCHEMA = os.environ.get("MAIN_DB_SCHEMA", "public")
-
 
 def tbl(name: str) -> str:
-    return f"{SCHEMA}.{name}"
+    schema = os.environ.get("MAIN_DB_SCHEMA", "public")
+    return f"{schema}.{name}"
 
 
 def get_db():
@@ -50,12 +49,14 @@ def err(message: str, status: int = 400) -> dict:
     }
 
 
-def handler(event: dict, context) -> dict:
+def _handle(event: dict) -> dict:
     if event.get("httpMethod") == "OPTIONS":
         return {"statusCode": 200, "headers": CORS_HEADERS, "body": ""}
 
     method = event.get("httpMethod", "GET")
     path = event.get("path", "/")
+    qs = event.get("queryStringParameters") or {}
+    action = qs.get("action") or ""
 
     body = {}
     raw_body = event.get("body") or ""
@@ -65,10 +66,10 @@ def handler(event: dict, context) -> dict:
     headers_dict = event.get("headers") or {}
     token = headers_dict.get("X-Session-Token") or headers_dict.get("x-session-token") or ""
 
-    print("AUTH:", method, path)
+    print("AUTH:", method, path, "action:", action)
 
     # POST /register
-    if "/register" in path and method == "POST":
+    if (action == "register" or "/register" in path) and method == "POST":
         username = (body.get("username") or "").strip().lower()
         email = (body.get("email") or "").strip().lower()
         password = body.get("password") or ""
@@ -125,7 +126,7 @@ def handler(event: dict, context) -> dict:
         }, 201)
 
     # POST /login
-    if "/login" in path and method == "POST":
+    if (action == "login" or "/login" in path) and method == "POST":
         login = (body.get("login") or body.get("email") or body.get("username") or "").strip().lower()
         password = body.get("password") or ""
 
@@ -165,7 +166,7 @@ def handler(event: dict, context) -> dict:
         })
 
     # POST /logout
-    if "/logout" in path and method == "POST":
+    if (action == "logout" or "/logout" in path) and method == "POST":
         if token:
             conn = get_db()
             with conn.cursor() as cur:
@@ -179,7 +180,7 @@ def handler(event: dict, context) -> dict:
         return ok({"success": True})
 
     # GET /me
-    if "/me" in path and method == "GET":
+    if (action == "me" or "/me" in path) and method == "GET":
         if not token:
             return err("Не авторизован", 401)
         conn = get_db()
@@ -204,7 +205,7 @@ def handler(event: dict, context) -> dict:
         })
 
     # PUT /me
-    if "/me" in path and method == "PUT":
+    if (action == "me" or "/me" in path) and method == "PUT":
         if not token:
             return err("Не авторизован", 401)
         conn = get_db()
@@ -229,3 +230,15 @@ def handler(event: dict, context) -> dict:
         return ok({"success": True, "display_name": display_name, "status_text": status_text})
 
     return err("Маршрут не найден", 404)
+
+
+def handler(event: dict, context) -> dict:
+    try:
+        return _handle(event)
+    except Exception as exc:
+        print("UNHANDLED ERROR:", exc)
+        return {
+            "statusCode": 500,
+            "headers": CORS_HEADERS,
+            "body": json.dumps({"error": str(exc)}, ensure_ascii=False),
+        }

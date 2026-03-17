@@ -14,9 +14,10 @@ export function removeToken() {
   localStorage.removeItem(TOKEN_KEY);
 }
 
-async function request(path: string, method: string, body?: object) {
+async function request(action: string, method: string, body?: object) {
   const token = getToken();
-  const res = await fetch(`${AUTH_URL}${path}`, {
+  const url = `${AUTH_URL}?action=${action}`;
+  const res = await fetch(url, {
     method,
     headers: {
       "Content-Type": "application/json",
@@ -31,17 +32,17 @@ async function request(path: string, method: string, body?: object) {
 
 export const authApi = {
   register: (payload: { username: string; email: string; password: string; display_name: string }) =>
-    request("/register", "POST", payload),
+    request("register", "POST", payload),
 
   login: (payload: { login: string; password: string }) =>
-    request("/login", "POST", payload),
+    request("login", "POST", payload),
 
-  logout: () => request("/logout", "POST"),
+  logout: () => request("logout", "POST"),
 
-  me: () => request("/me", "GET"),
+  me: () => request("me", "GET"),
 
   updateMe: (payload: { display_name?: string; status_text?: string }) =>
-    request("/me", "PUT", payload),
+    request("me", "PUT", payload),
 };
 
 export type UserProfile = {
