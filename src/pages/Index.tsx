@@ -1,5 +1,7 @@
 import { useState, useRef, useEffect } from "react";
 import Icon from "@/components/ui/icon";
+import type { UserProfile } from "@/lib/api";
+import { authApi } from "@/lib/api";
 
 const CONTACTS = [
   { id: 1, name: "Алина Морозова", avatar: "А", color: "#a855f7", status: "online", lastMsg: "Окей, увидимся завтра!", time: "14:32", unread: 3, typing: false },
@@ -45,15 +47,22 @@ const PROFILE = {
 type Tab = "chats" | "profile";
 type ToastMsg = { id: number; contactName: string; text: string };
 
-export default function Index() {
+interface IndexProps {
+  user: UserProfile;
+  onLogout: () => void;
+  onUpdateUser: (u: UserProfile) => void;
+}
+
+export default function Index({ user, onLogout, onUpdateUser }: IndexProps) {
   const [activeTab, setActiveTab] = useState<Tab>("chats");
   const [activeChat, setActiveChat] = useState<number | null>(null);
   const [messages, setMessages] = useState(MESSAGES);
   const [inputText, setInputText] = useState("");
   const [toasts, setToasts] = useState<ToastMsg[]>([]);
   const [notifications, setNotifications] = useState(true);
-  const [profileStatus, setProfileStatus] = useState(PROFILE.status);
+  const [profileStatus, setProfileStatus] = useState(user.status_text || PROFILE.status);
   const [editingStatus, setEditingStatus] = useState(false);
+  const [savingStatus, setSavingStatus] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -250,31 +259,51 @@ export default function Index() {
                   <div className="relative mb-4">
                     <div
                       className="w-20 h-20 rounded-full flex items-center justify-center text-3xl font-black text-white pulse-ring"
-                      style={{ background: "linear-gradient(135deg, #a855f7, #6366f1)", boxShadow: "0 0 30px rgba(168,85,247,0.4)" }}
+                      style={{ background: `linear-gradient(135deg, ${user.avatar_color}, ${user.avatar_color}88)`, boxShadow: `0 0 30px ${user.avatar_color}66` }}
                     >
-                      {PROFILE.avatar}
+                      {user.avatar_letter}
                     </div>
                     <span className="absolute bottom-1 right-1 w-4 h-4 rounded-full online-dot border-2 border-[hsl(230,20%,8%)]" />
                   </div>
-                  <h2 className="text-lg font-bold text-white">{PROFILE.name}</h2>
-                  <p className="text-sm text-white/40">{PROFILE.username}</p>
+                  <h2 className="text-lg font-bold text-white">{user.display_name}</h2>
+                  <p className="text-sm text-white/40">@{user.username}</p>
+                  <p className="text-xs text-white/25 mt-1">{user.email}</p>
                 </div>
 
                 {/* Status */}
                 <div className="glass rounded-2xl p-4 mb-3">
                   <p className="text-xs text-white/30 mb-2 font-medium uppercase tracking-wider">Статус</p>
                   {editingStatus ? (
-                    <input
-                      className="w-full bg-white/5 rounded-xl px-3 py-2 text-sm text-white outline-none border border-purple-500/40 focus:border-purple-500/80 transition-colors"
-                      value={profileStatus}
-                      onChange={(e) => setProfileStatus(e.target.value)}
-                      onBlur={() => setEditingStatus(false)}
-                      onKeyDown={(e) => e.key === "Enter" && setEditingStatus(false)}
-                      autoFocus
-                    />
+                    <div className="flex gap-2">
+                      <input
+                        className="flex-1 bg-white/5 rounded-xl px-3 py-2 text-sm text-white outline-none border border-purple-500/40 focus:border-purple-500/80 transition-colors"
+                        value={profileStatus}
+                        onChange={(e) => setProfileStatus(e.target.value)}
+                        onKeyDown={async (e) => {
+                          if (e.key === "Enter") {
+                            setEditingStatus(false);
+                            setSavingStatus(true);
+                            try {
+                              await authApi.updateMe({ status_text: profileStatus });
+                              onUpdateUser({ ...user, status_text: profileStatus });
+                            } finally { setSavingStatus(false); }
+                          }
+                          if (e.key === "Escape") setEditingStatus(false);
+                        }}
+                        onBlur={async () => {
+                          setEditingStatus(false);
+                          setSavingStatus(true);
+                          try {
+                            await authApi.updateMe({ status_text: profileStatus });
+                            onUpdateUser({ ...user, status_text: profileStatus });
+                          } finally { setSavingStatus(false); }
+                        }}
+                        autoFocus
+                      />
+                    </div>
                   ) : (
                     <div className="flex items-center justify-between group cursor-pointer" onClick={() => setEditingStatus(true)}>
-                      <p className="text-sm text-white/80">{profileStatus}</p>
+                      <p className="text-sm text-white/80">{savingStatus ? "Сохраняю..." : profileStatus}</p>
                       <Icon name="Pencil" size={13} className="text-white/20 group-hover:text-purple-400 transition-colors ml-2" />
                     </div>
                   )}
@@ -296,7 +325,7 @@ export default function Index() {
                     { icon: "Bell", label: "Уведомления", action: () => setNotifications((p) => !p), toggle: notifications },
                     { icon: "Shield", label: "Конфиденциальность", action: undefined, toggle: undefined },
                     { icon: "Palette", label: "Тема оформления", action: undefined, toggle: undefined },
-                    { icon: "LogOut", label: "Выйти", action: undefined, toggle: undefined },
+                    { icon: "LogOut", label: "Выйти", action: onLogout, toggle: undefined },
                   ].map((item, i, arr) => (
                     <div
                       key={item.label}
